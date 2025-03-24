@@ -1,4 +1,6 @@
 from setuptools import setup
+import os
+from glob import glob
 
 package_name = 'deviceshifu_ros2_driver'
 
@@ -15,11 +17,12 @@ setup(
     zip_safe=True,
     maintainer='miku',
     maintainer_email='miku@todo.todo',
-    description='TODO: Package description',
+    description='DeviceShifu ROS2 driver',
     license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'driver_node = deviceshifu_ros2_driver.driver_node:main',
         ],
     },
 )
