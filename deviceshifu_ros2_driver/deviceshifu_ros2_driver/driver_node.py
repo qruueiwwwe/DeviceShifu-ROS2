@@ -18,9 +18,10 @@ class DeviceShifuROS2Driver(Node):
         # 创建一个订阅者，用于接收远程控制指令
         self.command_sub = self.create_subscription(Int32, 'remote_command', self.command_callback, 10)
         # 创建一个定时器，用于定时发布指令
-        timer_period = 0.5  # seconds
+        timer_period = 5  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
         self.i = 0
+        self.current_velocity = Twist()
         self.current_velocity = Twist()
         self.bridge = CvBridge()  # 初始化CvBridge
 
@@ -74,24 +75,32 @@ class DeviceShifuROS2Driver(Node):
         self.get_logger().info('Publishing default color image')
 
     def move_forward(self, speed=0.5):
-        """向前移动"""
-        self.current_velocity.linear.x = speed
-        self.current_velocity.angular.z = 0.0
+        """Move forward"""
+        cmd = Twist()
+        cmd.linear.x = speed
+        self.current_velocity = cmd
+        self.cmd_vel_pub.publish(cmd)
 
     def move_backward(self, speed=0.5):
-        """向后移动"""
-        self.current_velocity.linear.x = -speed
-        self.current_velocity.angular.z = 0.0
+        """Move backward"""
+        cmd = Twist()
+        cmd.linear.x = -speed
+        self.current_velocity = cmd
+        self.cmd_vel_pub.publish(cmd)
 
     def rotate(self, angular_speed):
-        """旋转"""
-        self.current_velocity.linear.x = 0.0
-        self.current_velocity.angular.z = angular_speed
-
+        """Rotate"""
+        cmd = Twist()
+        cmd.angular.z = angular_speed
+        self.current_velocity = cmd
+        self.cmd_vel_pub.publish(cmd)
+        
     def stop(self):
-        """停止"""
-        self.current_velocity.linear.x = 0.0
-        self.current_velocity.angular.z = 0.0
+        """Stop"""
+        cmd = Twist()
+        self.current_velocity = cmd
+        self.cmd_vel_pub.publish(cmd)
+
 
 def main(args=None):
     rclpy.init(args=args)
