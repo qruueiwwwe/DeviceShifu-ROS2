@@ -30,7 +30,7 @@ class DeviceShifuROS2Driver(Node):
 
     def timer_callback(self):
         # 发布当前速度
-        self.publisher_.publish(self.current_velocity)
+        self.cmd_vel_pub.publish(self.current_velocity)
         self.get_logger().info('Publishing: "%s"' % self.current_velocity)
 
     def command_callback(self, msg):
