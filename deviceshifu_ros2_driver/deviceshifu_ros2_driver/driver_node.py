@@ -5,6 +5,8 @@ from std_msgs.msg import Int32
 from sensor_msgs.msg import Image  # 导入Image消息类型
 import cv2
 from cv_bridge import CvBridge  # 导入CvBridge用于图像转换
+import numpy as np  # 导入numpy用于生成纯色图像
+import time
 
 class DeviceShifuROS2Driver(Node):
     def __init__(self):
@@ -22,7 +24,7 @@ class DeviceShifuROS2Driver(Node):
         self.current_velocity = Twist()
         self.bridge = CvBridge()  # 初始化CvBridge
 
-        # 假设有一个方法来获取摄像头图像
+        # 捕获摄像头图像
         self.capture_camera_image()
 
     def timer_callback(self):
@@ -43,18 +45,33 @@ class DeviceShifuROS2Driver(Node):
 
     def capture_camera_image(self):
         """捕获摄像头图像并发布"""
-        # 这里假设您有一个方法来获取图像，例如使用OpenCV
-        cap = cv2.VideoCapture(0)  # 打开默认摄像头
-        while True:
-            ret, frame = cap.read()
-            if ret:
-                # 将图像转换为ROS消息并发布
-                image_msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
-                self.image_pub.publish(image_msg)
-                self.get_logger().info('Publishing camera image')
-            else:
-                self.get_logger().error('Failed to capture image')
-            rclpy.sleep(0.1)  # 控制发布频率
+        try:
+            cap = cv2.VideoCapture(0)  # 尝试打开默认摄像头
+            if not cap.isOpened():
+                raise Exception("Camera not opened")  # 如果摄像头未打开，抛出异常
+
+            while rclpy.ok():
+                ret, frame = cap.read()
+                if ret:
+                    # 将图像转换为ROS消息并发布
+                    image_msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+                    self.image_pub.publish(image_msg)
+                    self.get_logger().info('Publishing camera image')
+                else:
+                    self.get_logger().error('Failed to capture image')
+                time.sleep(0.1)  # 控制发布频率
+
+        except Exception as e:
+            self.get_logger().warn(f'Using default image due to: {str(e)}')
+            self.publish_default_image()
+
+    def publish_default_image(self):
+        """发布720x480的纯色图像"""
+        color = (57, 197, 187)  # RGB颜色 #39c5bb
+        default_image = np.full((480, 720, 3), color, dtype=np.uint8)  # 创建纯色图像
+        image_msg = self.bridge.cv2_to_imgmsg(default_image, encoding='bgr8')
+        self.image_pub.publish(image_msg)
+        self.get_logger().info('Publishing default color image')
 
     def move_forward(self, speed=0.5):
         """向前移动"""
