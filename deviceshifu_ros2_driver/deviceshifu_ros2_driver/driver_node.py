@@ -12,26 +12,23 @@ class DeviceShifuROS2Driver(Node):
     def __init__(self):
         super().__init__('deviceshifu_ros2_driver')
         # 创建一个发布者，用于发布控制指令
-        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
         # 创建一个发布者，用于发布摄像头图像
         self.image_pub = self.create_publisher(Image, 'camera/image', 10)
         # 创建一个订阅者，用于接收远程控制指令
         self.command_sub = self.create_subscription(Int32, 'remote_command', self.command_callback, 10)
-        # 创建一个定时器，用于定时发布指令
-        timer_period = 5  # seconds
-        self.timer = self.create_timer(timer_period, self.timer_callback)
-        self.i = 0
+        # 创建一个定时器，用于定时发布指令和图像
+        self.timer = self.create_timer(0.1, self.timer_callback)  # 10Hz
         self.current_velocity = Twist()
-        self.current_velocity = Twist()
-        self.bridge = CvBridge()  # 初始化CvBridge
-
-        # 捕获摄像头图像
-        self.capture_camera_image()
+        self.bridge = CvBridge()
 
     def timer_callback(self):
+        """定时器回调函数，用于发布速度和图像"""
         # 发布当前速度
-        self.cmd_vel_pub.publish(self.current_velocity)
-        self.get_logger().info('Publishing: "%s"' % self.current_velocity)
+        self.publisher_.publish(self.current_velocity)
+        
+        # 发布默认图像
+        self.publish_default_image()
 
     def command_callback(self, msg):
         """处理远程控制指令"""
@@ -44,63 +41,42 @@ class DeviceShifuROS2Driver(Node):
         elif msg.data == 3:  # 旋转
             self.rotate(0.2)
 
-    def capture_camera_image(self):
-        """捕获摄像头图像并发布"""
-        try:
-            cap = cv2.VideoCapture(0)  # 尝试打开默认摄像头
-            if not cap.isOpened():
-                raise Exception("Camera not opened")  # 如果摄像头未打开，抛出异常
-
-            while rclpy.ok():
-                ret, frame = cap.read()
-                if ret:
-                    # 将图像转换为ROS消息并发布
-                    image_msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
-                    self.image_pub.publish(image_msg)
-                    self.get_logger().info('Publishing camera image')
-                else:
-                    self.get_logger().error('Failed to capture image')
-                time.sleep(0.1)  # 控制发布频率
-
-        except Exception as e:
-            self.get_logger().warn(f'Using default image due to: {str(e)}')
-            self.publish_default_image()
-
     def publish_default_image(self):
         """发布720x480的纯色图像"""
-        color = (57, 197, 187)  # RGB颜色 #39c5bb
-        default_image = np.full((480, 720, 3), color, dtype=np.uint8)  # 创建纯色图像
-        image_msg = self.bridge.cv2_to_imgmsg(default_image, encoding='bgr8')
-        self.image_pub.publish(image_msg)
-        self.get_logger().info('Publishing default color image')
+        try:
+            # 创建纯色图像 (#39c5bb 在BGR格式下是 [187, 197, 57])
+            default_image = np.zeros((480, 720, 3), dtype=np.uint8)
+            # OpenCV使用BGR格式，所以颜色值需要反转
+            default_image[:, :] = [187, 197, 57]  # BGR格式的 #39c5bb
+            
+            # 转换为ROS消息并发布
+            image_msg = self.bridge.cv2_to_imgmsg(default_image, encoding='bgr8')
+            image_msg.header.stamp = self.get_clock().now().to_msg()
+            image_msg.header.frame_id = "camera_frame"
+            self.image_pub.publish(image_msg)
+            
+        except Exception as e:
+            self.get_logger().error(f'Error publishing default image: {str(e)}')
 
     def move_forward(self, speed=0.5):
-        """Move forward"""
-        cmd = Twist()
-        cmd.linear.x = speed
-        self.current_velocity = cmd
-        self.cmd_vel_pub.publish(cmd)
+        """向前移动"""
+        self.current_velocity.linear.x = speed
+        self.current_velocity.angular.z = 0.0
 
     def move_backward(self, speed=0.5):
-        """Move backward"""
-        cmd = Twist()
-        cmd.linear.x = -speed
-        self.current_velocity = cmd
-        self.cmd_vel_pub.publish(cmd)
+        """向后移动"""
+        self.current_velocity.linear.x = -speed
+        self.current_velocity.angular.z = 0.0
 
     def rotate(self, angular_speed):
-        """Rotate"""
-        cmd = Twist()
-        cmd.angular.z = angular_speed
-        self.current_velocity = cmd
-        self.cmd_vel_pub.publish(cmd)
-        
-    def stop(self):
-        """Stop"""
-        cmd = Twist()
-        self.current_velocity = cmd
-        self.cmd_vel_pub.publish(cmd)
+        """旋转"""
+        self.current_velocity.linear.x = 0.0
+        self.current_velocity.angular.z = angular_speed
 
+    def stop(self):
+        """停止"""
+        self.current_velocity.linear.x = 0.0
+        self.current_velocity.angular.z = 0.0
 
 def main(args=None):
     rclpy.init(args=args)
