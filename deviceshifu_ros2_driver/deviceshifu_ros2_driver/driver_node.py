@@ -12,7 +12,7 @@ class DeviceShifuROS2Driver(Node):
     def __init__(self):
         super().__init__('deviceshifu_ros2_driver')
         # 创建一个发布者，用于发布控制指令
-        self.publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         # 创建一个发布者，用于发布摄像头图像
         self.image_pub = self.create_publisher(Image, 'camera/image', 10)
         # 创建一个订阅者，用于接收远程控制指令
