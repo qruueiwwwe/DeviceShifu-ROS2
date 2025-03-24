@@ -10,6 +10,8 @@ import cv2
 import numpy as np
 from cv_bridge import CvBridge
 import time
+from pynput import keyboard
+import threading
 
 class DeviceShifuDriver(Node):
     def __init__(self):
@@ -48,6 +50,22 @@ class DeviceShifuDriver(Node):
         
         # 创建定时器用于发布图像
         self.create_timer(1.0/self.camera_fps, self.publish_image)
+        
+        # 初始化键盘状态
+        self.key_states = {
+            'w': False,
+            'a': False,
+            's': False,
+            'd': False
+        }
+        
+        # 启动键盘监听线程
+        self.keyboard_thread = threading.Thread(target=self.start_keyboard_listener)
+        self.keyboard_thread.daemon = True  # 设置为守护线程
+        self.keyboard_thread.start()
+        
+        # 创建定时器用于处理键盘控制
+        self.create_timer(0.1, self.keyboard_control_callback)
         
         self.get_logger().info('DeviceShifu驱动已初始化')
 
@@ -124,6 +142,50 @@ class DeviceShifuDriver(Node):
             self.get_logger().warn(f'未知命令: {msg.data}')
             return
             
+        self.cmd_vel_pub.publish(cmd)
+
+    def on_press(self, key):
+        """键盘按下回调"""
+        try:
+            key_char = key.char.lower()
+            if key_char in self.key_states:
+                self.key_states[key_char] = True
+        except AttributeError:
+            pass
+
+    def on_release(self, key):
+        """键盘释放回调"""
+        try:
+            key_char = key.char.lower()
+            if key_char in self.key_states:
+                self.key_states[key_char] = False
+        except AttributeError:
+            pass
+
+    def start_keyboard_listener(self):
+        """启动键盘监听"""
+        with keyboard.Listener(
+            on_press=self.on_press,
+            on_release=self.on_release) as listener:
+            listener.join()
+
+    def keyboard_control_callback(self):
+        """处理键盘控制"""
+        cmd = Twist()
+        
+        # 处理前后移动
+        if self.key_states['w'] and not self.key_states['s']:
+            cmd.linear.x = self.linear_speed
+        elif self.key_states['s'] and not self.key_states['w']:
+            cmd.linear.x = -self.linear_speed
+        
+        # 处理左右转向
+        if self.key_states['a'] and not self.key_states['d']:
+            cmd.angular.z = self.angular_speed
+        elif self.key_states['d'] and not self.key_states['a']:
+            cmd.angular.z = -self.angular_speed
+        
+        # 发布控制命令
         self.cmd_vel_pub.publish(cmd)
 
     def destroy_node(self):
