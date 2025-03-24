@@ -92,7 +92,7 @@ class DeviceShifuDriver(Node):
                 msg.header.stamp = self.get_clock().now().to_msg()
                 msg.header.frame_id = "camera_frame"
                 self.image_pub.publish(msg)
-                self.get_logger().info('已发布模拟图像')  # 添加日志
+                # self.get_logger().info('已发布模拟图像')  # 添加日志
             except Exception as e:
                 self.get_logger().error(f'模拟图像发布失败: {str(e)}')
 
