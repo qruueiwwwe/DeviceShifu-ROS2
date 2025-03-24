@@ -27,7 +27,11 @@ class DeviceShifuDriver(Node):
         
         # 创建发布者
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
-        self.image_pub = self.create_publisher(Image, 'camera/image', 10)
+        self.image_pub = self.create_publisher(
+            Image, 
+            'camera/image',  # 确保使用正确的话题名称
+            10
+        )
         
         # 创建订阅者 - 用于接收控制命令
         self.command_sub = self.create_subscription(
@@ -70,7 +74,10 @@ class DeviceShifuDriver(Node):
             if ret:
                 try:
                     msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+                    msg.header.stamp = self.get_clock().now().to_msg()
+                    msg.header.frame_id = "camera_frame"
                     self.image_pub.publish(msg)
+                    self.get_logger().debug('已发布实际摄像头图像')
                 except Exception as e:
                     self.get_logger().error(f'图像发布失败: {str(e)}')
         else:
@@ -78,11 +85,14 @@ class DeviceShifuDriver(Node):
             try:
                 # 创建纯色图像 (#39c5bb)
                 image = np.zeros((480, 720, 3), dtype=np.uint8)
-                image[:, :] = [187, 197, 57]  # BGR格式
+                # 注意：OpenCV使用BGR格式
+                image[:] = [187, 197, 57]  # BGR格式的 #39c5bb
+                
                 msg = self.bridge.cv2_to_imgmsg(image, encoding='bgr8')
                 msg.header.stamp = self.get_clock().now().to_msg()
                 msg.header.frame_id = "camera_frame"
                 self.image_pub.publish(msg)
+                self.get_logger().info('已发布模拟图像')  # 添加日志
             except Exception as e:
                 self.get_logger().error(f'模拟图像发布失败: {str(e)}')
 
