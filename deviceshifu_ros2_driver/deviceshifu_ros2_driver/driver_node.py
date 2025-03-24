@@ -1,89 +1,139 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
+from sensor_msgs.msg import Image
 from std_msgs.msg import Int32
-from sensor_msgs.msg import Image  # 导入Image消息类型
 import cv2
-from cv_bridge import CvBridge  # 导入CvBridge用于图像转换
-import numpy as np  # 导入numpy用于生成纯色图像
+import numpy as np
+from cv_bridge import CvBridge
 import time
 
-class DeviceShifuROS2Driver(Node):
+class DeviceShifuDriver(Node):
     def __init__(self):
-        super().__init__('deviceshifu_ros2_driver')
-        # 创建一个发布者，用于发布控制指令
-        self.publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
-        # 创建一个发布者，用于发布摄像头图像
-        self.image_pub = self.create_publisher(Image, 'camera/image', 10)
-        # 创建一个订阅者，用于接收远程控制指令
-        self.command_sub = self.create_subscription(Int32, 'remote_command', self.command_callback, 10)
-        # 创建一个定时器，用于定时发布指令和图像
-        self.timer = self.create_timer(0.1, self.timer_callback)  # 10Hz
-        self.current_velocity = Twist()
-        self.bridge = CvBridge()
-
-    def timer_callback(self):
-        """定时器回调函数，用于发布速度和图像"""
-        # 发布当前速度
-        self.publisher_.publish(self.current_velocity)
+        super().__init__('deviceshifu_driver')
         
-        # 发布默认图像
-        self.publish_default_image()
+        # 初始化参数
+        self.declare_parameter('linear_speed', 0.5)
+        self.declare_parameter('angular_speed', 0.2)
+        self.declare_parameter('camera_fps', 30)
+        
+        # 获取参数值
+        self.linear_speed = self.get_parameter('linear_speed').value
+        self.angular_speed = self.get_parameter('angular_speed').value
+        self.camera_fps = self.get_parameter('camera_fps').value
+        
+        # 创建发布者
+        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.image_pub = self.create_publisher(Image, 'camera/image', 10)
+        
+        # 创建订阅者 - 用于接收控制命令
+        self.command_sub = self.create_subscription(
+            Int32,
+            'remote_command',
+            self.command_callback,
+            10)
+            
+        # 初始化CvBridge
+        self.bridge = CvBridge()
+        
+        # 初始化摄像头
+        self.init_camera()
+        
+        # 创建定时器用于发布图像
+        self.create_timer(1.0/self.camera_fps, self.publish_image)
+        
+        self.get_logger().info('DeviceShifu驱动已初始化')
+
+    def init_camera(self):
+        """初始化摄像头"""
+        try:
+            self.cap = cv2.VideoCapture(0)
+            if self.cap.isOpened():
+                self.get_logger().info('成功连接摄像头')
+                self.has_camera = True
+            else:
+                raise Exception("无法打开摄像头")
+        except Exception as e:
+            self.get_logger().warn(f'摄像头初始化失败: {str(e)}')
+            self.get_logger().info('将使用模拟图像')
+            self.has_camera = False
+            self.cap = None
+
+    def publish_image(self):
+        """发布图像数据"""
+        if self.has_camera:
+            # 使用实际摄像头
+            ret, frame = self.cap.read()
+            if ret:
+                try:
+                    msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+                    self.image_pub.publish(msg)
+                except Exception as e:
+                    self.get_logger().error(f'图像发布失败: {str(e)}')
+        else:
+            # 发布模拟图像
+            try:
+                # 创建纯色图像 (#39c5bb)
+                image = np.zeros((480, 720, 3), dtype=np.uint8)
+                image[:, :] = [187, 197, 57]  # BGR格式
+                msg = self.bridge.cv2_to_imgmsg(image, encoding='bgr8')
+                msg.header.stamp = self.get_clock().now().to_msg()
+                msg.header.frame_id = "camera_frame"
+                self.image_pub.publish(msg)
+            except Exception as e:
+                self.get_logger().error(f'模拟图像发布失败: {str(e)}')
 
     def command_callback(self, msg):
-        """处理远程控制指令"""
-        if msg.data == 0:  # 停止
-            self.stop()
-        elif msg.data == 1:  # 向前移动
-            self.move_forward(0.5)
-        elif msg.data == 2:  # 向后移动
-            self.move_backward(0.5)
-        elif msg.data == 3:  # 旋转
-            self.rotate(0.2)
-
-    def publish_default_image(self):
-        """发布720x480的纯色图像"""
-        try:
-            # 创建纯色图像 (#39c5bb 在BGR格式下是 [187, 197, 57])
-            default_image = np.zeros((480, 720, 3), dtype=np.uint8)
-            # OpenCV使用BGR格式，所以颜色值需要反转
-            default_image[:, :] = [187, 197, 57]  # BGR格式的 #39c5bb
+        """处理控制命令"""
+        cmd = Twist()
+        
+        if msg.data == 0:    # 停止
+            cmd.linear.x = 0.0
+            cmd.angular.z = 0.0
+            self.get_logger().info('执行停止命令')
+        elif msg.data == 1:  # 前进
+            cmd.linear.x = self.linear_speed
+            cmd.angular.z = 0.0
+            self.get_logger().info('执行前进命令')
+        elif msg.data == 2:  # 后退
+            cmd.linear.x = -self.linear_speed
+            cmd.angular.z = 0.0
+            self.get_logger().info('执行后退命令')
+        elif msg.data == 3:  # 左转
+            cmd.linear.x = 0.0
+            cmd.angular.z = self.angular_speed
+            self.get_logger().info('执行左转命令')
+        elif msg.data == 4:  # 右转
+            cmd.linear.x = 0.0
+            cmd.angular.z = -self.angular_speed
+            self.get_logger().info('执行右转命令')
+        else:
+            self.get_logger().warn(f'未知命令: {msg.data}')
+            return
             
-            # 转换为ROS消息并发布
-            image_msg = self.bridge.cv2_to_imgmsg(default_image, encoding='bgr8')
-            image_msg.header.stamp = self.get_clock().now().to_msg()
-            image_msg.header.frame_id = "camera_frame"
-            self.image_pub.publish(image_msg)
-            
-        except Exception as e:
-            self.get_logger().error(f'Error publishing default image: {str(e)}')
+        self.cmd_vel_pub.publish(cmd)
 
-    def move_forward(self, speed=0.5):
-        """向前移动"""
-        self.current_velocity.linear.x = speed
-        self.current_velocity.angular.z = 0.0
-
-    def move_backward(self, speed=0.5):
-        """向后移动"""
-        self.current_velocity.linear.x = -speed
-        self.current_velocity.angular.z = 0.0
-
-    def rotate(self, angular_speed):
-        """旋转"""
-        self.current_velocity.linear.x = 0.0
-        self.current_velocity.angular.z = angular_speed
-
-    def stop(self):
-        """停止"""
-        self.current_velocity.linear.x = 0.0
-        self.current_velocity.angular.z = 0.0
+    def destroy_node(self):
+        """清理资源"""
+        if self.has_camera and self.cap is not None:
+            self.cap.release()
+        super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
-    driver_node = DeviceShifuROS2Driver()
-    rclpy.spin(driver_node)
-    driver_node.destroy_node()
-    rclpy.shutdown()
+    
+    try:
+        driver = DeviceShifuDriver()
+        rclpy.spin(driver)
+    except Exception as e:
+        print(f'发生错误: {str(e)}')
+    finally:
+        if 'driver' in locals():
+            driver.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
