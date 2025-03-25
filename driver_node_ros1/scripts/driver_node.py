@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import rclpy
-from rclpy.node import Node
+import rospy
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Image
 from std_msgs.msg import Int32
@@ -11,34 +10,22 @@ import numpy as np
 from cv_bridge import CvBridge
 import time
 
-class DeviceShifuDriver(Node):
+class DeviceShifuDriver:
     def __init__(self):
-        super().__init__('deviceshifu_driver')
+        # 初始化ROS节点
+        rospy.init_node('deviceshifu_driver', anonymous=True)
         
         # 初始化参数
-        self.declare_parameter('linear_speed', 0.5)
-        self.declare_parameter('angular_speed', 0.2)
-        self.declare_parameter('camera_fps', 30)
-        
-        # 获取参数值
-        self.linear_speed = self.get_parameter('linear_speed').value
-        self.angular_speed = self.get_parameter('angular_speed').value
-        self.camera_fps = self.get_parameter('camera_fps').value
+        self.linear_speed = rospy.get_param('~linear_speed', 0.5)
+        self.angular_speed = rospy.get_param('~angular_speed', 0.2)
+        self.camera_fps = rospy.get_param('~camera_fps', 30)
         
         # 创建发布者
-        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
-        self.image_pub = self.create_publisher(
-            Image, 
-            'camera/image',  # 确保使用正确的话题名称
-            10
-        )
+        self.cmd_vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=10)
+        self.image_pub = rospy.Publisher('camera/image', Image, queue_size=10)
         
         # 创建订阅者 - 用于接收控制命令
-        self.command_sub = self.create_subscription(
-            Int32,
-            'remote_command',
-            self.command_callback,
-            10)
+        self.command_sub = rospy.Subscriber('remote_command', Int32, self.command_callback)
             
         # 初始化CvBridge
         self.bridge = CvBridge()
@@ -47,22 +34,22 @@ class DeviceShifuDriver(Node):
         self.init_camera()
         
         # 创建定时器用于发布图像
-        self.create_timer(1.0/self.camera_fps, self.publish_image)
+        self.rate = rospy.Rate(self.camera_fps)
         
-        self.get_logger().info('DeviceShifu驱动已初始化')
+        rospy.loginfo('DeviceShifu驱动已初始化')
 
     def init_camera(self):
         """初始化摄像头"""
         try:
             self.cap = cv2.VideoCapture(0)
             if self.cap.isOpened():
-                self.get_logger().info('成功连接摄像头')
+                rospy.loginfo('成功连接摄像头')
                 self.has_camera = True
             else:
                 raise Exception("无法打开摄像头")
         except Exception as e:
-            self.get_logger().warn(f'摄像头初始化失败: {str(e)}')
-            self.get_logger().info('将使用模拟图像')
+            rospy.logwarn(f'摄像头初始化失败: {str(e)}')
+            rospy.loginfo('将使用模拟图像')
             self.has_camera = False
             self.cap = None
 
@@ -74,12 +61,12 @@ class DeviceShifuDriver(Node):
             if ret:
                 try:
                     msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
-                    msg.header.stamp = self.get_clock().now().to_msg()
+                    msg.header.stamp = rospy.Time.now()
                     msg.header.frame_id = "camera_frame"
                     self.image_pub.publish(msg)
-                    self.get_logger().debug('已发布实际摄像头图像')
+                    rospy.logdebug('已发布实际摄像头图像')
                 except Exception as e:
-                    self.get_logger().error(f'图像发布失败: {str(e)}')
+                    rospy.logerr(f'图像发布失败: {str(e)}')
         else:
             # 发布模拟图像
             try:
@@ -89,12 +76,11 @@ class DeviceShifuDriver(Node):
                 image[:] = [187, 197, 57]  # BGR格式的 #39c5bb
                 
                 msg = self.bridge.cv2_to_imgmsg(image, encoding='bgr8')
-                msg.header.stamp = self.get_clock().now().to_msg()
+                msg.header.stamp = rospy.Time.now()
                 msg.header.frame_id = "camera_frame"
                 self.image_pub.publish(msg)
-                # self.get_logger().info('已发布模拟图像')  # 添加日志
             except Exception as e:
-                self.get_logger().error(f'模拟图像发布失败: {str(e)}')
+                rospy.logerr(f'模拟图像发布失败: {str(e)}')
 
     def command_callback(self, msg):
         """处理控制命令"""
@@ -103,47 +89,47 @@ class DeviceShifuDriver(Node):
         if msg.data == 0:    # 停止
             cmd.linear.x = 0.0
             cmd.angular.z = 0.0
-            self.get_logger().info('执行停止命令')
+            rospy.loginfo('执行停止命令')
         elif msg.data == 1:  # 前进
             cmd.linear.x = self.linear_speed
             cmd.angular.z = 0.0
-            self.get_logger().info('执行前进命令')
+            rospy.loginfo('执行前进命令')
         elif msg.data == 2:  # 后退
             cmd.linear.x = -self.linear_speed
             cmd.angular.z = 0.0
-            self.get_logger().info('执行后退命令')
+            rospy.loginfo('执行后退命令')
         elif msg.data == 3:  # 左转
             cmd.linear.x = 0.0
             cmd.angular.z = self.angular_speed
-            self.get_logger().info('执行左转命令')
+            rospy.loginfo('执行左转命令')
         elif msg.data == 4:  # 右转
             cmd.linear.x = 0.0
             cmd.angular.z = -self.angular_speed
-            self.get_logger().info('执行右转命令')
+            rospy.loginfo('执行右转命令')
         else:
-            self.get_logger().warn(f'未知命令: {msg.data}')
+            rospy.logwarn(f'未知命令: {msg.data}')
             return
             
         self.cmd_vel_pub.publish(cmd)
 
-    def destroy_node(self):
-        """清理资源"""
-        if self.has_camera and self.cap is not None:
-            self.cap.release()
-        super().destroy_node()
+    def run(self):
+        """运行节点"""
+        try:
+            while not rospy.is_shutdown():
+                self.publish_image()
+                self.rate.sleep()
+        except Exception as e:
+            rospy.logerr(f'发生错误: {str(e)}')
+        finally:
+            if self.has_camera and self.cap is not None:
+                self.cap.release()
 
-def main(args=None):
-    rclpy.init(args=args)
-    
+def main():
     try:
         driver = DeviceShifuDriver()
-        rclpy.spin(driver)
-    except Exception as e:
-        print(f'发生错误: {str(e)}')
-    finally:
-        if 'driver' in locals():
-            driver.destroy_node()
-        rclpy.shutdown()
+        driver.run()
+    except rospy.ROSInterruptException:
+        pass
 
 if __name__ == '__main__':
-    main()
+    main() 

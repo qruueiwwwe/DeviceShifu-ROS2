@@ -1,0 +1,13 @@
+# DeviceShifu驱动节点配置
+driver_node_ros1:
+  # 速度参数
+  linear_speed: 0.5  # 线速度 (m/s)
+  angular_speed: 0.2  # 角速度 (rad/s)
+  
+  # 摄像头参数
+  camera_fps: 30  # 帧率
+  camera_width: 720  # 图像宽度
+  camera_height: 480  # 图像高度
+  
+  # 模拟图像参数
+  sim_image_color: [187, 197, 57]  # BGR格式的 #39c5bb 

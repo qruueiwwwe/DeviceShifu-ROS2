@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>driver_node_ros1</name>
+  <version>0.0.1</version>
+  <description>ROS1 driver node for DeviceShifu</description>
+  <maintainer email="your_email@example.com">your_name</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>catkin_python</buildtool_depend>
+
+  <build_depend>roscpp</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>cv_bridge</build_depend>
+
+  <run_depend>roscpp</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>geometry_msgs</run_depend>
+  <run_depend>sensor_msgs</run_depend>
+  <run_depend>cv_bridge</run_depend>
+  <run_depend>python3-opencv</run_depend>
+  <run_depend>python3-numpy</run_depend>
+</package> 
